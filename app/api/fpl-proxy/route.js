@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
@@ -6,7 +8,6 @@ export async function GET() {
       }
     });
     
-    // Fixed: should throw ONLY if NOT ok (!)
     if (!response.ok) {
       throw new Error(`FPL API error: ${response.status}`);
     }
