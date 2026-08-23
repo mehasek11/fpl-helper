@@ -1,8 +1,20 @@
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
+    const { searchParams } = new URL(request.url);
+    const endpoint = searchParams.get('endpoint');
+    const event = searchParams.get('event');
+
+    let fplUrl = 'https://fantasy.premierleague.com/api/bootstrap-static/';
+
+    if (endpoint === 'fixtures') {
+      fplUrl = event 
+        ? `https://fantasy.premierleague.com/api/fixtures/?event=${event}`
+        : 'https://fantasy.premierleague.com/api/fixtures/';
+    }
+
+    const response = await fetch(fplUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
