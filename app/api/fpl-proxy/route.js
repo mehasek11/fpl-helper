@@ -6,6 +6,7 @@ export async function GET(request) {
     const endpoint = searchParams.get('endpoint');
     const event = searchParams.get('event');
     const managerId = searchParams.get('managerId');
+    const playerId = searchParams.get('playerId');
 
     let fplUrl = 'https://fantasy.premierleague.com/api/bootstrap-static/';
 
@@ -15,6 +16,10 @@ export async function GET(request) {
         : 'https://fantasy.premierleague.com/api/fixtures/';
     } else if (endpoint === 'picks' && managerId && event) {
       fplUrl = `https://fantasy.premierleague.com/api/entry/${managerId}/event/${event}/picks/`;
+    } else if (endpoint === 'manager' && managerId) {
+      fplUrl = `https://fantasy.premierleague.com/api/entry/${managerId}/`;
+    } else if (endpoint === 'player' && playerId) {
+      fplUrl = `https://fantasy.premierleague.com/api/element-summary/${playerId}/`;
     }
 
     const response = await fetch(fplUrl, {
