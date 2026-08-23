@@ -40,7 +40,7 @@ export default function SquadRoom() {
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiChatInput, setAiChatInput] = useState('');
   const [aiMessages, setAiMessages] = useState([
-    { role: 'assistant', content: "Hello manager! I'm your tactical AI. Ask me about your squad, player valuations, or who to transfer in/out!" }
+    { role: 'assistant', content: "Listen to me, manager. The season is long and we have a game every three days. What are we analyzing today? Ask me about your squad structure, player valuations, or match transitions." }
   ]);
   const [aiThinking, setAiThinking] = useState(false);
 
@@ -76,7 +76,7 @@ export default function SquadRoom() {
               name: `${player.first_name} ${player.second_name}`,
               webName: player.web_name,
               team: player.team,
-              element_type: player.element_type, // 1: GKP, 2: DEF, 3: MID, 4: FWD
+              element_type: player.element_type,
               now_cost: (player.now_cost / 10).toFixed(1),
               chance_of_playing_next_round: player.chance_of_playing_next_round,
               ep_next: player.ep_next,
@@ -94,26 +94,23 @@ export default function SquadRoom() {
   }, []);
 
   // Fetch Manager Picks and Standings
-  async function handleFetchManager(targetId = managerId, customTeamTitle = '') {
-    if (!targetId) return;
+  async function handleFetchManager(targetId, customTeamTitle = '') {
+    const idToFetch = targetId || managerId;
+    if (!idToFetch) return;
     setManagerLoading(true);
     try {
-      const manRes = await fetch(`/api/fpl-proxy?endpoint=manager&managerId=${targetId}`);
+      const manRes = await fetch(`/api/fpl-proxy?endpoint=manager&managerId=${idToFetch}`);
       const manData = await manRes.json();
       if (manData.id) {
         setManagerData(manData);
-        if (!customTeamTitle) {
-          setViewedTeamName(`${manData.player_first_name} ${manData.player_last_name} (${manData.name})`);
-        } else {
-          setViewedTeamName(customTeamTitle);
-        }
+        setViewedTeamName(customTeamTitle || `${manData.player_first_name} ${manData.player_last_name} (${manData.name})`);
       }
 
-      const picksRes = await fetch(`/api/fpl-proxy?endpoint=picks&managerId=${targetId}&event=${selectedGw}`);
+      const picksRes = await fetch(`/api/fpl-proxy?endpoint=picks&managerId=${idToFetch}&event=${selectedGw}`);
       const picksData = await picksRes.json();
       if (picksData.picks) {
         setManagerPicks(picksData.picks);
-        if (!customTeamTitle) setManagerId(targetId);
+        setManagerId(idToFetch.toString()); // Properly updates global state to fix the league bug
       }
     } catch (err) {
       console.error('Error fetching manager info', err);
@@ -125,7 +122,7 @@ export default function SquadRoom() {
 
   useEffect(() => {
     if (selectedGw && managerId) {
-      handleFetchManager(managerId);
+      handleFetchManager(managerId, viewedTeamName);
     }
   }, [selectedGw]);
 
@@ -191,23 +188,21 @@ export default function SquadRoom() {
     setAiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setAiThinking(true);
 
-    // Simulate intelligent tactical evaluation based on current screen context (e.g., selected player)
     setTimeout(() => {
       let aiResponse = "";
       if (selectedPlayer) {
-        aiResponse = `Analyzing ${selectedPlayer.name} (£${selectedPlayer.now_cost}m, Total Pts: ${selectedPlayer.total_points}):\n\n`;
         if (selectedPlayer.total_points > 30 || selectedPlayer.ep_next > 4) {
-          aiResponse += `**Verdict: KEEP.** This asset is delivering consistent returns with strong expected points (${selectedPlayer.ep_next || 'High'}). Selling now would hurt your rank.\n\n**Top Alternatives:** Consider sideways transfers only if targeting double gameweeks.`;
+          aiResponse = `Look, we need to talk about ${selectedPlayer.webName}. You look at his price (£${selectedPlayer.now_cost}m) and you think about selling. What you did right here is keeping him, because he understands the rhythm of the game and delivers expected points.\n\nWhat could you have done differently? Honestly, nothing right now. Don't overthink it. However, what you totally missed—which an elite manager wouldn't have—is looking at how his team plays in transitions against low-blocks in his next 3 fixtures. Keep him, but monitor his underlying metrics closely.`;
         } else {
-          aiResponse += `**Verdict: SELL / REPLACE.** Output has stalled relative to price. \n\n**Recommended Replacements:** Look at in-form midfielders/forwards with easier fixtures in the next 3 gameweeks.`;
+          aiResponse = `We have to be honest about ${selectedPlayer.webName}. What you did right was asking me this question, because you know something is wrong with his output for £${selectedPlayer.now_cost}m.\n\nWhat you could've done differently is sell him immediately. His intensity off the ball is missing. What you totally missed is that you held onto him too long. An elite manager would have seen his expected points dropping two weeks ago. Get him out and replace him with a midfielder who actually attacks the half-spaces.`;
         }
       } else {
-        aiResponse = `Looking at your current squad overview for GW${selectedGw}: Your formation is balanced, but keep an eye on upcoming fixture swings and bench coverage before the next deadline!`;
+        aiResponse = `Look at your squad. Is there balance? We need to control the ball. What you're doing right is keeping your premiums, but what you could do differently is look at your bench depth. An elite manager doesn't miss the upcoming fixture congestion. Who specifically do you want me to evaluate?`;
       }
 
       setAiMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
       setAiThinking(false);
-    }, 800);
+    }, 1200);
   }
 
   const startingXI = managerPicks.filter(p => p.position <= 11);
@@ -238,8 +233,34 @@ export default function SquadRoom() {
     return `https://resources.premierleague.com/premierleague/photos/players/110x140/p${photoCode}.png`;
   };
 
+  const renderMatchStat = (statName, identifier) => {
+    const stat = selectedFixture?.stats?.find(s => s.identifier === identifier);
+    if (!stat || (stat.a.length === 0 && stat.h.length === 0)) return null;
+    return (
+      <div className="border-t border-purple-900/50 pt-2 mt-2">
+        <p className="text-[10px] text-purple-400 uppercase text-center mb-1 font-bold">{statName}</p>
+        <div className="flex justify-between text-xs">
+          <div className="w-1/2 text-right pr-3 border-r border-purple-900/50 space-y-1">
+            {stat.h.map(s => (
+              <div key={s.element} className="text-white">
+                {playerMap[s.element]?.webName || 'Player'} <span className="text-[#00ff87] font-bold">({s.value})</span>
+              </div>
+            ))}
+          </div>
+          <div className="w-1/2 text-left pl-3 space-y-1">
+            {stat.a.map(s => (
+              <div key={s.element} className="text-white">
+                <span className="text-[#00ff87] font-bold">({s.value})</span> {playerMap[s.element]?.webName || 'Player'}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen w-full bg-[#37003c] text-white flex flex-col font-sans overflow-x-hidden m-0 p-0">
+    <div className="min-h-screen w-full bg-[#37003c] text-white flex flex-col font-sans overflow-x-hidden m-0 p-0 relative">
       <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 flex-1 flex flex-col">
         
         {/* Header Bar */}
@@ -462,7 +483,7 @@ export default function SquadRoom() {
 
         {/* PLAYER SLIDING DRAWER WITH OFFICIAL ACTION PHOTO */}
         {selectedPlayer && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex justify-end z-50 transition-opacity">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex justify-end z-40 transition-opacity">
             <div className="bg-[#26002b] border-l border-purple-600 h-full max-w-md w-full p-6 shadow-2xl relative text-white space-y-6 overflow-y-auto animate-in slide-in-from-right duration-300">
               
               <div className="flex justify-between items-center border-b border-purple-900 pb-4">
@@ -509,26 +530,21 @@ export default function SquadRoom() {
 
               {/* Next 3 Fixtures */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase text-purple-300 tracking-wider">Next 3 Fixtures & Expected Points</h4>
+                <h4 className="text-xs font-bold uppercase text-purple-300 tracking-wider">Next 3 Fixtures</h4>
                 {playerDetailsLoading ? (
                   <p className="text-xs text-purple-400">Loading fixtures...</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {playerUpcoming.slice(0, 3).map((fix, idx) => (
-                      <div key={idx} className="bg-[#19001a] border border-purple-900 p-2.5 rounded text-center space-y-1.5">
+                      <div key={idx} className="bg-[#19001a] border border-purple-900 p-2.5 rounded text-center space-y-1.5 flex flex-col justify-center items-center">
                         <p className="text-[10px] font-bold uppercase text-purple-200">
                           {fix.is_home ? 'H' : 'A'} vs {teamMap[fix.team_h === selectedPlayer.team ? fix.team_a : fix.team_h]?.short_name || 'OPP'}
                         </p>
-                        <div className="flex justify-center items-center gap-1.5">
-                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                            fix.difficulty <= 2 ? 'bg-emerald-600 text-white' : fix.difficulty === 3 ? 'bg-amber-600 text-white' : 'bg-red-600 text-white'
-                          }`}>
-                            Diff: {fix.difficulty}
-                          </span>
-                          <span className="text-[10px] font-mono bg-purple-900 px-1.5 py-0.5 rounded text-emerald-300 font-bold">
-                            xPts: {selectedPlayer.ep_next || '—'}
-                          </span>
-                        </div>
+                        <span className={`text-[10px] font-mono px-2 py-1 rounded font-bold w-full ${
+                          fix.difficulty <= 2 ? 'bg-emerald-600/80 text-white' : fix.difficulty === 3 ? 'bg-amber-600/80 text-white' : 'bg-red-600/80 text-white'
+                        }`}>
+                          Diff: {fix.difficulty}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -536,7 +552,7 @@ export default function SquadRoom() {
               </div>
 
               {/* Last Match Performance */}
-              <div className="space-y-2">
+              <div className="space-y-2 pb-16">
                 <h4 className="text-xs font-bold uppercase text-purple-300 tracking-wider">Last Fixture Performance</h4>
                 {playerHistory.length > 0 ? (
                   <div className="bg-[#19001a] border border-purple-900 p-3 rounded-lg flex justify-between items-center text-xs">
@@ -555,25 +571,14 @@ export default function SquadRoom() {
                 )}
               </div>
 
-              {/* Quick Prompt AI Suggestion in Drawer */}
-              <div className="bg-purple-950/60 border border-purple-700/60 p-3.5 rounded-xl space-y-2">
-                <p className="text-[11px] font-bold text-[#00ff87]">💡 Ask SquadAI about {selectedPlayer.webName}:</p>
-                <button 
-                  onClick={() => { setIsAiOpen(true); setAiChatInput(`Is ${selectedPlayer.name} worth keeping in my team right now?`); }}
-                  className="w-full bg-[#00ff87] text-[#37003c] font-bold text-xs py-2 rounded hover:bg-emerald-400 transition-colors uppercase tracking-wider"
-                >
-                  Analyze with SquadAI ➔
-                </button>
-              </div>
-
             </div>
           </div>
         )}
 
         {/* SOFASCORE STYLE MATCH SUMMARY MODAL */}
         {selectedFixture && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-[#26002b] border border-purple-600 rounded-2xl max-w-md w-full p-6 shadow-2xl relative text-white space-y-6">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-40 p-4">
+            <div className="bg-[#26002b] border border-purple-600 rounded-2xl max-w-md w-full p-6 shadow-2xl relative text-white space-y-6 max-h-[90vh] overflow-y-auto scrollbar-thin">
               <button 
                 onClick={() => setSelectedFixture(null)}
                 className="absolute top-4 right-4 text-purple-400 hover:text-white font-bold text-sm bg-purple-900/50 w-8 h-8 rounded-full flex items-center justify-center"
@@ -607,11 +612,35 @@ export default function SquadRoom() {
                   <span className="text-purple-400">Gameweek</span>
                   <span className="font-bold">GW {selectedFixture.event}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between pb-2">
                   <span className="text-purple-400">Difficulty Rating (Home / Away)</span>
                   <span className="font-bold font-mono">{selectedFixture.team_h_difficulty} / {selectedFixture.team_a_difficulty}</span>
                 </div>
+
+                {/* Match Stats Section */}
+                {selectedFixture.started && selectedFixture.stats && (
+                  <div className="mt-4 pt-2">
+                    <h4 className="text-[11px] font-bold uppercase text-purple-300 text-center mb-2">Match Events</h4>
+                    {renderMatchStat('Goals', 'goals_scored')}
+                    {renderMatchStat('Assists', 'assists')}
+                    {renderMatchStat('Bonus Points', 'bonus')}
+                    {renderMatchStat('Saves', 'saves')}
+                  </div>
+                )}
               </div>
+
+              {/* AI Tactical Takeaway */}
+              {selectedFixture.finished && (
+                <div className="bg-purple-950/60 border border-purple-700/60 p-4 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-[#00ff87] text-[#37003c] text-[9px] font-black px-1.5 py-0.5 rounded">AI</span>
+                    <p className="text-[10px] font-bold uppercase text-[#00ff87] tracking-wider">Tactical Takeaways</p>
+                  </div>
+                  <p className="text-xs text-purple-100 leading-relaxed">
+                    The dominating side effectively controlled the half-spaces and exploited numerical overloads on the wings. Keep an eye on the attacking fullbacks moving forward—they are making aggressive overlapping runs that will continue to yield high expected points (xPts) if they maintain this intensity.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -621,7 +650,7 @@ export default function SquadRoom() {
           {!isAiOpen ? (
             <button
               onClick={() => setIsAiOpen(true)}
-              className="bg-[#00ff87] hover:bg-emerald-400 text-[#37003c] p-3.5 rounded-full shadow-2xl flex items-center justify-center font-black transition-transform hover:scale-110 border-2 border-white"
+              className="bg-[#00ff87] hover:bg-emerald-400 text-[#37003c] p-3.5 rounded-full shadow-[0_0_15px_rgba(0,255,135,0.4)] flex items-center justify-center font-black transition-transform hover:scale-110 border-2 border-white"
               title="Open SquadAI Assistant"
             >
               🤖
@@ -647,10 +676,10 @@ export default function SquadRoom() {
               </div>
 
               {/* Chat Messages */}
-              <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
+              <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs scrollbar-thin">
                 {aiMessages.map((msg, index) => (
                   <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-xl p-2.5 ${
+                    <div className={`max-w-[85%] rounded-xl p-3 ${
                       msg.role === 'user' 
                         ? 'bg-[#00ff87] text-[#37003c] font-bold' 
                         : 'bg-[#19001a] border border-purple-900 text-purple-100'
@@ -661,8 +690,8 @@ export default function SquadRoom() {
                 ))}
                 {aiThinking && (
                   <div className="flex justify-start">
-                    <div className="bg-[#19001a] border border-purple-900 text-purple-400 rounded-xl p-2.5 text-xs animate-pulse">
-                      Analyzing screen state & stats...
+                    <div className="bg-[#19001a] border border-purple-900 text-purple-400 rounded-xl p-3 text-xs animate-pulse">
+                      Analyzing tactics and underlying metrics...
                     </div>
                   </div>
                 )}
@@ -675,16 +704,15 @@ export default function SquadRoom() {
                   placeholder={selectedPlayer ? `Ask about ${selectedPlayer.webName}...` : "Ask AI anything about your squad..."}
                   value={aiChatInput}
                   onChange={(e) => setAiChatInput(e.target.value)}
-                  className="flex-1 bg-[#26002b] border border-purple-700 text-white rounded px-3 py-1.5 text-xs focus:outline-none focus:border-[#00ff87]"
+                  className="flex-1 bg-[#26002b] border border-purple-700 text-white rounded px-3 py-2 text-xs focus:outline-none focus:border-[#00ff87]"
                 />
                 <button 
                   type="submit"
-                  className="bg-[#00ff87] text-[#37003c] font-bold text-xs px-3 py-1.5 rounded hover:bg-emerald-400"
+                  className="bg-[#00ff87] text-[#37003c] font-bold text-xs px-4 py-2 rounded hover:bg-emerald-400 uppercase tracking-wide"
                 >
                   Send
                 </button>
               </form>
-
             </div>
           )}
         </div>
