@@ -3,16 +3,24 @@
 import { useState, useEffect } from 'react';
 
 export default function SquadRoom() {
-  const [activeTab, setActiveTab] = useState('fixtures'); // default to fixtures to test your new hub
+  const [activeTab, setActiveTab] = useState('squad'); // 'squad', 'advice', 'fixtures'
 
   // FPL Data States
   const [gameweeks, setGameweeks] = useState([]);
   const [selectedGw, setSelectedGw] = useState(1);
   const [fixtures, setFixtures] = useState([]);
   const [teamMap, setTeamMap] = useState({});
+  const [playerMap, setPlayerMap] = useState({});
   const [loadingFixtures, setLoadingFixtures] = useState(false);
 
-  // Fetch Bootstrap Data & Build Team Map on Mount
+  // Manager Squad States
+  const [managerId, setManagerId] = useState('');
+  const [inputManagerId, setInputManagerId] = useState('');
+  const [managerPicks, setManagerPicks] = useState([]);
+  const [managerLoading, setManagerLoading] = useState(false);
+  const [managerName, setManagerName] = useState('hamza');
+
+  // Fetch Bootstrap Data, Players, and Teams on Mount
   useEffect(() => {
     async function fetchBootstrap() {
       try {
@@ -26,11 +34,24 @@ export default function SquadRoom() {
         }
 
         if (data.teams) {
-          const map = {};
+          const tMap = {};
           data.teams.forEach(team => {
-            map[team.id] = team.name;
+            tMap[team.id] = team.name;
           });
-          setTeamMap(map);
+          setTeamMap(tMap);
+        }
+
+        if (data.elements) {
+          const pMap = {};
+          data.elements.forEach(player => {
+            pMap[player.id] = {
+              name: `${player.first_name} ${player.second_name}`,
+              webName: player.web_name,
+              element_type: player.element_type, // 1: GKP, 2: DEF, 3: MID, 4: FWD
+              now_cost: (player.now_cost / 10).toFixed(1)
+            };
+          });
+          setPlayerMap(pMap);
         }
       } catch (err) {
         console.error('Error loading bootstrap data', err);
@@ -56,6 +77,38 @@ export default function SquadRoom() {
     }
     fetchFixturesForGw();
   }, [selectedGw]);
+
+  // Fetch Manager Squad Picks by Team ID
+  async function handleFetchManager(e) {
+    e.preventDefault();
+    if (!inputManagerId) return;
+    setManagerLoading(true);
+    try {
+      const res = await fetch(`/api/fpl-proxy?endpoint=picks&managerId=${inputManagerId}&event=${selectedGw}`);
+      const data = await res.json();
+      if (data.picks) {
+        setManagerPicks(data.picks);
+        setManagerId(inputManagerId);
+      } else {
+        alert('Could not find squad for this Team ID. Check the ID and try again.');
+      }
+    } catch (err) {
+      console.error('Error fetching manager squad', err);
+    } finally {
+      setManagerLoading(false);
+    }
+  }
+
+  // Helper position mapper
+  const getPositionLabel = (type) => {
+    switch (type) {
+      case 1: return 'GK';
+      case 2: return 'DEF';
+      case 3: return 'MID';
+      case 4: return 'FWD';
+      default: return 'PL';
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 font-sans bg-[#fbf9f5] min-h-screen text-stone-900">
@@ -98,17 +151,89 @@ export default function SquadRoom() {
         </button>
       </div>
 
-      {/* Squad Tab Content Placeholder */}
+      {/* MY SQUAD TAB VIEW */}
       {activeTab === 'squad' && (
-        <div className="bg-[#f4f1ea] border border-stone-300 rounded p-6 text-center text-stone-600 text-sm">
-          Squad view layout active. (Link your player cards here!)
+        <div className="space-y-6">
+          {/* Manager Details & Team ID Input */}
+          <div className="bg-[#f4f1ea] border border-stone-300 rounded p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+            <div>
+              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Manager</p>
+              <h2 className="text-lg font-extrabold text-stone-900">{managerName} {managerId ? `(ID: ${managerId})` : ''}</h2>
+            </div>
+
+            <form onSubmit={handleFetchManager} className="flex gap-2 w-full sm:w-auto">
+              <input 
+                type="text" 
+                placeholder="Enter FPL Team ID..." 
+                value={inputManagerId}
+                onChange={(e) => setInputManagerId(e.target.value)}
+                className="bg-white border border-stone-300 rounded px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:border-stone-800 w-full sm:w-48"
+              />
+              <button 
+                type="submit"
+                className="bg-stone-900 text-white font-bold text-xs px-4 py-1.5 rounded hover:bg-stone-800 transition-colors uppercase tracking-wider whitespace-nowrap"
+              >
+                {managerLoading ? 'Loading...' : 'Load Squad'}
+              </button>
+            </form>
+          </div>
+
+          {/* Squad Pitch / Grid Container */}
+          <div className="bg-[#f4f1ea] border border-stone-300 rounded p-4 shadow-sm">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 border-b border-stone-300 pb-2 mb-4">
+              Gameweek {selectedGw} Squad Lineup
+            </h3>
+
+            {managerPicks.length === 0 ? (
+              <div className="text-center py-12 text-stone-500 text-xs uppercase tracking-wider">
+                Enter your official FPL Team ID above to load your roster onto the pitch!
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {managerPicks.map((pick, index) => {
+                  const player = playerMap[pick.element] || {};
+                  const posName = getPositionLabel(player.element_type);
+
+                  return (
+                    <div 
+                      key={index} 
+                      className="bg-white border border-stone-200 rounded p-3 flex justify-between items-center shadow-xs hover:border-stone-400 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded border border-stone-200 font-mono">
+                          {posName}
+                        </span>
+                        <div>
+                          <div className="text-xs font-bold text-stone-900">
+                            {player.webName || player.name || `Player #${pick.element}`}
+                          </div>
+                          <div className="text-[10px] text-stone-500">
+                            £{player.now_cost || '—'}m {pick.is_captain ? '• (C)' : pick.is_vice_captain ? '• (V)' : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right font-mono text-xs font-bold text-stone-800">
+                        {pick.position <= 11 ? 'Starting' : 'Bench'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* AI Advice Tab Content Placeholder */}
+      {/* AI ADVICE TAB VIEW */}
       {activeTab === 'advice' && (
-        <div className="bg-[#f4f1ea] border border-stone-300 rounded p-6 text-center text-stone-600 text-sm">
-          AI tactical advice recommendations go here.
+        <div className="bg-[#f4f1ea] border border-stone-300 rounded p-6 text-stone-800 space-y-4 shadow-sm">
+          <h3 className="text-xs font-bold uppercase tracking-wider border-b border-stone-300 pb-2">
+            This Gameweek's AI Tactical Advice
+          </h3>
+          <p className="text-xs text-stone-600">
+            Connect your team ID in the squad tab to let the AI analyze your roster against upcoming fixtures, form, and difficulty ratings.
+          </p>
         </div>
       )}
 
