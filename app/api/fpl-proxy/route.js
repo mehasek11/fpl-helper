@@ -6,6 +6,7 @@ export async function GET() {
       }
     });
     
+    // Fixed: should throw ONLY if NOT ok (!)
     if (!response.ok) {
       throw new Error(`FPL API error: ${response.status}`);
     }
