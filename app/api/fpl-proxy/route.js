@@ -5,7 +5,13 @@ export async function GET() {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
+    
+    if (!response.ok) {
+      throw new Error(`FPL API error: ${response.status}`);
+    }
+
     const data = await response.json();
+    
     return Response.json(data, {
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -13,6 +19,6 @@ export async function GET() {
       }
     });
   } catch (error) {
-    return Response.json({ error: 'Failed to fetch FPL data' }, { status: 500 });
+    return Response.json({ error: 'Failed to fetch FPL data', details: error.message }, { status: 500 });
   }
 }
